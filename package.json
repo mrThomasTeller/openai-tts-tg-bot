@@ -1,0 +1,16 @@
+{
+  "name": "openai-tts-tg-bot",
+  "version": "1.0.0",
+  "description": "Telegram bot that converts text to speech using OpenAI TTS API",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "bun src/index.js",
+    "dev": "bun --watch src/index.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.3.1",
+    "openai": "^4.26.0",
+    "telegraf": "^4.15.3"
+  }
+}

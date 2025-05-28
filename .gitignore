@@ -1,0 +1,27 @@
+# Environment variables
+.env
+
+# Dependency directories
+node_modules/
+
+# Temporary files
+temp/
+*.mp3
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS
+.DS_Store
+Thumbs.db 
