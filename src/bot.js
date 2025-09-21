@@ -1,10 +1,10 @@
 import { Telegraf } from "telegraf";
 import config from "./config.js";
-import tts, {
-  splitTextIntoChunks,
-  textToSpeech,
-  cleanupTempFiles,
-} from "./tts.js";
+import { splitTextIntoChunks, textToSpeech, cleanupTempFiles } from "./tts.js";
+import {
+  processDocumentFromTelegram,
+  cleanupTempDocuments,
+} from "./fileParser.js";
 import fs from "fs";
 
 // Create bot instance
@@ -43,7 +43,6 @@ async function processMessageQueue(userId) {
         }
 
         // Convert to speech
-        const voice = ctx.session?.voice || config.ttsVoice;
         const audioFilePath = await textToSpeech(chunk);
 
         // Send audio
@@ -56,7 +55,10 @@ async function processMessageQueue(userId) {
       }
 
       // Delete "processing" message after completion
-      await ctx.telegram.deleteMessage(ctx.chat.id, processingMessage.message_id);
+      await ctx.telegram.deleteMessage(
+        ctx.chat.id,
+        processingMessage.message_id
+      );
 
       // Perform cleanup of any stray temp files
       cleanupTempFiles();
@@ -144,6 +146,76 @@ bot.command("voice", async (ctx) => {
   return ctx.reply(`Голос изменен на ${voice}.`);
 });
 
+// Handle document messages
+bot.on("document", async (ctx) => {
+  const userId = ctx.from.id;
+  const document = ctx.message.document;
+
+  // Check if file type is supported
+  const supportedTypes = [
+    "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "text/plain",
+  ];
+
+  const fileExtension = document.file_name?.split(".").pop()?.toLowerCase();
+  const supportedExtensions = ["pdf", "doc", "docx", "txt"];
+
+  if (
+    !supportedTypes.includes(document.mime_type) &&
+    !supportedExtensions.includes(fileExtension)
+  ) {
+    return ctx.reply(
+      "Неподдерживаемый тип файла. Поддерживаются: PDF, Word (doc, docx), TXT"
+    );
+  }
+
+  // Check file size (Telegram allows max 20MB for bots)
+  if (document.file_size > 20 * 1024 * 1024) {
+    return ctx.reply("Файл слишком большой. Максимальный размер: 20 МБ");
+  }
+
+  try {
+    // Send "processing" message
+    const processingMessage = await ctx.reply(
+      `Обрабатываю документ "${document.file_name}"...`
+    );
+
+    // Extract text from document
+    const text = await processDocumentFromTelegram(ctx, document.file_id);
+
+    if (!text || text.trim() === "") {
+      await ctx.telegram.deleteMessage(
+        ctx.chat.id,
+        processingMessage.message_id
+      );
+      return ctx.reply("Не удалось извлечь текст из документа");
+    }
+
+    // Initialize queue for user if not exists
+    if (!messageQueues.has(userId)) {
+      messageQueues.set(userId, []);
+    }
+
+    // Add message to queue
+    messageQueues.get(userId).push({
+      ctx,
+      text,
+      processingMessage,
+    });
+
+    // Start processing queue for this user
+    processMessageQueue(userId);
+
+    // Clean up old temp documents
+    cleanupTempDocuments();
+  } catch (error) {
+    console.error("Error processing document:", error);
+    ctx.reply(`Ошибка при обработке документа: ${error.message}`);
+  }
+});
+
 // Handle text messages
 bot.on("text", async (ctx) => {
   const text = ctx.message.text;
@@ -166,7 +238,7 @@ bot.on("text", async (ctx) => {
     messageQueues.get(userId).push({
       ctx,
       text,
-      processingMessage
+      processingMessage,
     });
 
     // Start processing queue for this user
