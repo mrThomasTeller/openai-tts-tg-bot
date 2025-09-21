@@ -10,6 +10,66 @@ import fs from "fs";
 // Create bot instance
 const bot = new Telegraf(config.telegramBotToken);
 
+// Message processing queue
+const messageQueues = new Map(); // Store queue per user
+const processingUsers = new Set(); // Track users currently being processed
+
+// Process messages from queue sequentially
+async function processMessageQueue(userId) {
+  if (processingUsers.has(userId)) return;
+
+  const queue = messageQueues.get(userId);
+  if (!queue || queue.length === 0) {
+    messageQueues.delete(userId);
+    return;
+  }
+
+  processingUsers.add(userId);
+
+  while (queue && queue.length > 0) {
+    const { ctx, text, processingMessage } = queue.shift();
+
+    try {
+      // Split text into chunks if needed
+      const chunks = splitTextIntoChunks(text, config.maxTextLength);
+
+      // Convert each chunk to speech
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+
+        // Add "processing chunk" message if multiple chunks
+        if (chunks.length > 1) {
+          await ctx.reply(`Обрабатываю часть ${i + 1} из ${chunks.length}...`);
+        }
+
+        // Convert to speech
+        const voice = ctx.session?.voice || config.ttsVoice;
+        const audioFilePath = await textToSpeech(chunk);
+
+        // Send audio
+        await ctx.replyWithVoice({
+          source: fs.createReadStream(audioFilePath),
+        });
+
+        // Clean up the file after sending
+        fs.unlinkSync(audioFilePath);
+      }
+
+      // Delete "processing" message after completion
+      await ctx.telegram.deleteMessage(ctx.chat.id, processingMessage.message_id);
+
+      // Perform cleanup of any stray temp files
+      cleanupTempFiles();
+    } catch (error) {
+      console.error("Error processing message:", error);
+      await ctx.reply(`Произошла ошибка: ${error.message}`);
+    }
+  }
+
+  processingUsers.delete(userId);
+  messageQueues.delete(userId);
+}
+
 // Check if user is allowed to use the bot
 function isUserAllowed(ctx) {
   const userId = ctx.from?.id?.toString();
@@ -91,42 +151,28 @@ bot.on("text", async (ctx) => {
   // Ignore commands
   if (text.startsWith("/")) return;
 
+  const userId = ctx.from.id;
+
   try {
     // Send "processing" message
     const processingMessage = await ctx.reply("Обрабатываю ваш запрос...");
 
-    // Split text into chunks if needed
-    const chunks = splitTextIntoChunks(text, config.maxTextLength);
-
-    // Convert each chunk to speech
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i];
-
-      // Add "processing chunk" message if multiple chunks
-      if (chunks.length > 1) {
-        await ctx.reply(`Обрабатываю часть ${i + 1} из ${chunks.length}...`);
-      }
-
-      // Convert to speech
-      const voice = ctx.session?.voice || config.ttsVoice;
-      const audioFilePath = await textToSpeech(chunk);
-
-      // Send audio
-      await ctx.replyWithVoice({
-        source: fs.createReadStream(audioFilePath),
-      });
-
-      // Clean up the file after sending
-      fs.unlinkSync(audioFilePath);
+    // Initialize queue for user if not exists
+    if (!messageQueues.has(userId)) {
+      messageQueues.set(userId, []);
     }
 
-    // Delete "processing" message after completion
-    await ctx.telegram.deleteMessage(ctx.chat.id, processingMessage.message_id);
+    // Add message to queue
+    messageQueues.get(userId).push({
+      ctx,
+      text,
+      processingMessage
+    });
 
-    // Perform cleanup of any stray temp files
-    cleanupTempFiles();
+    // Start processing queue for this user
+    processMessageQueue(userId);
   } catch (error) {
-    console.error("Error processing message:", error);
+    console.error("Error queueing message:", error);
     ctx.reply(`Произошла ошибка: ${error.message}`);
   }
 });
