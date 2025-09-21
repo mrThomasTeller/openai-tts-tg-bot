@@ -147,7 +147,7 @@ bot.command("voice", async (ctx) => {
 });
 
 // Handle document messages
-bot.on("document", async (ctx) => {
+bot.on("message:document", async (ctx) => {
   const userId = ctx.from.id;
   const document = ctx.message.document;
 
@@ -217,7 +217,7 @@ bot.on("document", async (ctx) => {
 });
 
 // Handle text messages
-bot.on("text", async (ctx) => {
+bot.on("message:text", async (ctx) => {
   const text = ctx.message.text;
 
   // Ignore commands

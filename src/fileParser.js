@@ -1,6 +1,5 @@
 import fs from "fs";
 import path from "path";
-import pdfParse from "pdf-parse";
 import mammoth from "mammoth";
 import { promisify } from "util";
 import https from "https";
@@ -28,6 +27,8 @@ async function downloadFile(fileUrl, filePath) {
 // Extract text from PDF
 async function extractTextFromPDF(buffer) {
   try {
+    // Dynamic import to avoid initialization issues in Docker
+    const pdfParse = (await import("pdf-parse/lib/pdf-parse.js")).default;
     const data = await pdfParse(buffer);
     return data.text;
   } catch (error) {
