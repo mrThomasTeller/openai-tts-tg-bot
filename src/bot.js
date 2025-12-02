@@ -27,19 +27,33 @@ async function processMessageQueue(userId) {
   processingUsers.add(userId);
 
   while (queue && queue.length > 0) {
-    const { ctx, text, processingMessage } = queue.shift();
+    const { ctx, text, processingMessage, fileName } = queue.shift();
 
     try {
       // Split text into chunks if needed
       const chunks = splitTextIntoChunks(text, config.maxTextLength);
 
-      // Convert each chunk to speech
+      // Delete initial "processing" message
+      await ctx.telegram.deleteMessage(
+        ctx.chat.id,
+        processingMessage.message_id
+      );
+
+      // Show file name if provided (for documents)
+      if (fileName) {
+        await ctx.reply(fileName);
+      }
+
+      // Convert each chunk to speech and send immediately
       for (let i = 0; i < chunks.length; i++) {
         const chunk = chunks[i];
 
-        // Add "processing chunk" message if multiple chunks
+        // Show "processing chunk" message if multiple chunks
+        let chunkMessage = null;
         if (chunks.length > 1) {
-          await ctx.reply(`Обрабатываю часть ${i + 1} из ${chunks.length}...`);
+          chunkMessage = await ctx.reply(
+            `Обрабатываю часть ${i + 1} из ${chunks.length}...`
+          );
         }
 
         // Convert to speech
@@ -52,13 +66,15 @@ async function processMessageQueue(userId) {
 
         // Clean up the file after sending
         fs.unlinkSync(audioFilePath);
-      }
 
-      // Delete "processing" message after completion
-      await ctx.telegram.deleteMessage(
-        ctx.chat.id,
-        processingMessage.message_id
-      );
+        // Delete "processing chunk" message after audio is sent
+        if (chunkMessage) {
+          await ctx.telegram.deleteMessage(
+            ctx.chat.id,
+            chunkMessage.message_id
+          );
+        }
+      }
 
       // Perform cleanup of any stray temp files
       cleanupTempFiles();
@@ -198,11 +214,12 @@ bot.on("document", async (ctx) => {
       messageQueues.set(userId, []);
     }
 
-    // Add message to queue
+    // Add message to queue with file name
     messageQueues.get(userId).push({
       ctx,
       text,
       processingMessage,
+      fileName: document.file_name,
     });
 
     // Start processing queue for this user
