@@ -1,13 +1,12 @@
-FROM oven/bun:latest
+FROM node:20-alpine
 
 WORKDIR /app
 
-# Copy package.json and bun.lockb (if exists)
+# Copy package files
 COPY package.json ./
-COPY bun.lockb* ./
 
 # Install dependencies
-RUN bun install --production
+RUN npm install --production
 
 # Copy the source code
 COPY src/ ./src/
@@ -18,5 +17,5 @@ RUN mkdir -p temp
 # Set environment variables
 ENV NODE_ENV=production
 
-# Run the bot
-CMD ["bun", "src/index.js"] 
+# Run the bot (exec form with shell for proper signal handling and unbuffered output)
+CMD ["node", "--no-warnings", "src/index.js"] 

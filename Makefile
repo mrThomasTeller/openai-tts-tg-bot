@@ -12,6 +12,9 @@ start-attached:
 start:
 	docker compose -f docker-compose.yml up --detach && docker system prune -f
 
+restart:
+	make stop && make start
+
 stop:
 	docker compose stop
 
