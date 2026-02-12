@@ -70,19 +70,26 @@ export async function transcribeTelegramAudio(ctx, fileId) {
 }
 
 export async function createSummaryWithEmoji(text) {
+  const originalWords = text.trim().split(/\s+/).filter(Boolean).length;
+  const targetWords = Math.max(60, Math.round(originalWords / 4.5));
+
   try {
     const completion = await openai.chat.completions.create({
       model: config.summaryModel,
-      temperature: 0.3,
+      temperature: 0.35,
       messages: [
         {
           role: "system",
           content:
-            "Ты помощник, который делает очень краткую, понятную выжимку на русском языке. Добавляй уместные emoji. Формат: 3-6 коротких пунктов.",
+            "Ты помощник, который делает содержательную выжимку на русском языке без чрезмерного сжатия. Добавляй уместные emoji. Структура: 1-2 абзаца и затем 5-10 пунктов по сути.",
         },
         {
           role: "user",
-          content: `Сделай краткую выжимку по этому тексту:\n\n${text}`,
+          content:
+            `Сделай выжимку по тексту так, чтобы сохранить ключевые детали и контекст.\n` +
+            `Ориентир по объему: около ${targetWords} слов (допустимо +/- 20%).\n` +
+            `Важно: не сжимай слишком сильно, целевой коэффициент сжатия примерно 4-5x.\n\n` +
+            `Текст:\n${text}`,
         },
       ],
     });
@@ -92,4 +99,3 @@ export async function createSummaryWithEmoji(text) {
     throw new Error(`Не удалось создать выжимку: ${error.message}`);
   }
 }
-
