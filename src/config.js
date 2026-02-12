@@ -31,4 +31,7 @@ export default {
   ttsModel: process.env.TTS_MODEL || "tts-1",
   ttsVoice: process.env.TTS_VOICE || "alloy",
   maxTextLength: parseInt(process.env.MAX_TEXT_LENGTH || "4096", 10),
+  sttModel: process.env.STT_MODEL || "whisper-1",
+  summaryModel: process.env.SUMMARY_MODEL || "gpt-4o-mini",
+  audioBatchWindowMs: parseInt(process.env.AUDIO_BATCH_WINDOW_MS || "2000", 10),
 };

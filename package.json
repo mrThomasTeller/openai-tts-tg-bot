@@ -1,7 +1,6 @@
 {
-  "name": "openai-tts-tg-bot",
-  "version": "1.0.0",
-  "description": "Telegram bot that converts text to speech using OpenAI TTS API",
+  "private": true,
+  "description": "Telegram bot powered by AI",
   "main": "src/index.js",
   "type": "module",
   "scripts": {

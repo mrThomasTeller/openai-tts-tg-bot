@@ -5,6 +5,10 @@ import {
   processDocumentFromTelegram,
   cleanupTempDocuments,
 } from "./fileParser.js";
+import {
+  transcribeTelegramAudio,
+  createSummaryWithEmoji,
+} from "./transcription.js";
 import fs from "fs";
 
 // Create bot instance
@@ -13,6 +17,125 @@ const bot = new Telegraf(config.telegramBotToken);
 // Message processing queue
 const messageQueues = new Map(); // Store queue per user
 const processingUsers = new Set(); // Track users currently being processed
+const audioBatchStates = new Map(); // Store pending audio messages per user
+
+async function upsertStatusMessage(state, text) {
+  if (!state.statusMessage) {
+    state.statusMessage = await state.chatCtx.reply(text);
+    return;
+  }
+
+  try {
+    await state.chatCtx.telegram.editMessageText(
+      state.chatId,
+      state.statusMessage.message_id,
+      undefined,
+      text
+    );
+  } catch (error) {
+    if (!error.message?.includes("message is not modified")) {
+      state.statusMessage = await state.chatCtx.reply(text);
+    }
+  }
+}
+
+async function processAudioBatch(userId) {
+  const state = audioBatchStates.get(userId);
+  if (!state || state.processing) return;
+
+  const batch = state.items.splice(0, state.items.length);
+  if (batch.length === 0) return;
+
+  state.processing = true;
+
+  try {
+    await upsertStatusMessage(
+      state,
+      `🎧 Начал обработку аудио (${batch.length} шт.)`
+    );
+
+    const transcriptParts = [];
+    for (let i = 0; i < batch.length; i++) {
+      const item = batch[i];
+      await upsertStatusMessage(
+        state,
+        `📝 Транскрибация ${i + 1}/${batch.length}...`
+      );
+
+      const transcript = await transcribeTelegramAudio(item.ctx, item.fileId);
+      if (transcript) {
+        transcriptParts.push(transcript);
+      }
+    }
+
+    const mergedTranscript = transcriptParts.join("\n\n").trim();
+    if (!mergedTranscript) {
+      await upsertStatusMessage(state, "⚠️ Не удалось распознать текст в аудио.");
+      return;
+    }
+
+    await upsertStatusMessage(state, "✨ Формирую краткую выжимку...");
+    const summary = await createSummaryWithEmoji(mergedTranscript);
+
+    await upsertStatusMessage(state, "✅ Готово!");
+
+    if (summary) {
+      await state.chatCtx.reply(`✨ Выжимка:\n${summary}`);
+    }
+  } catch (error) {
+    console.error("Error processing audio batch:", error);
+    await state.chatCtx.reply(`Ошибка при обработке аудио: ${error.message}`);
+  } finally {
+    state.processing = false;
+
+    if (state.items.length > 0) {
+      state.timer = setTimeout(() => {
+        processAudioBatch(userId);
+      }, config.audioBatchWindowMs);
+    } else {
+      if (state.timer) {
+        clearTimeout(state.timer);
+      }
+      audioBatchStates.delete(userId);
+    }
+  }
+}
+
+function enqueueAudioMessage(ctx, fileId) {
+  const userId = ctx.from.id;
+  let state = audioBatchStates.get(userId);
+
+  if (!state) {
+    state = {
+      chatCtx: ctx,
+      chatId: ctx.chat.id,
+      items: [],
+      timer: null,
+      processing: false,
+      statusMessage: null,
+    };
+    audioBatchStates.set(userId, state);
+  }
+
+  state.chatCtx = ctx;
+  state.chatId = ctx.chat.id;
+  state.items.push({ ctx, fileId });
+
+  if (state.timer) {
+    clearTimeout(state.timer);
+  }
+
+  upsertStatusMessage(
+    state,
+    `⏳ Получил аудио (${state.items.length}). Жду еще сообщения для общей выжимки...`
+  ).catch((error) => {
+    console.error("Error updating status message:", error);
+  });
+
+  state.timer = setTimeout(() => {
+    processAudioBatch(userId);
+  }, config.audioBatchWindowMs);
+}
 
 // Process messages from queue sequentially
 async function processMessageQueue(userId) {
@@ -130,7 +253,8 @@ bot.help((ctx) => {
       "Доступные команды:\n" +
       "/start - Начать работу с ботом\n" +
       "/help - Показать эту справку\n" +
-      "/voice [название голоса] - Изменить голос (доступны: alloy, echo, fable, onyx, nova, shimmer)"
+      "/voice [название голоса] - Изменить голос (доступны: alloy, echo, fable, onyx, nova, shimmer)\n\n" +
+      "Также поддерживаются голосовые и аудиофайлы: бот сделает транскрипт и краткую выжимку."
   );
 });
 
@@ -177,6 +301,15 @@ bot.on("document", async (ctx) => {
 
   const fileExtension = document.file_name?.split(".").pop()?.toLowerCase();
   const supportedExtensions = ["pdf", "doc", "docx", "txt"];
+  const audioExtensions = ["mp3", "wav", "m4a", "ogg", "oga", "flac", "aac"];
+
+  if (
+    document.mime_type?.startsWith("audio/") ||
+    audioExtensions.includes(fileExtension)
+  ) {
+    enqueueAudioMessage(ctx, document.file_id);
+    return;
+  }
 
   if (
     !supportedTypes.includes(document.mime_type) &&
@@ -231,6 +364,16 @@ bot.on("document", async (ctx) => {
     console.error("Error processing document:", error);
     ctx.reply(`Ошибка при обработке документа: ${error.message}`);
   }
+});
+
+// Handle Telegram voice messages
+bot.on("voice", async (ctx) => {
+  enqueueAudioMessage(ctx, ctx.message.voice.file_id);
+});
+
+// Handle Telegram audio messages
+bot.on("audio", async (ctx) => {
+  enqueueAudioMessage(ctx, ctx.message.audio.file_id);
 });
 
 // Handle text messages
