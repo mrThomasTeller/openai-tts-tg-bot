@@ -15,6 +15,13 @@ async function startBot() {
   try {
     const botInfo = await bot.telegram.getMe();
 
+    await bot.telegram.setMyCommands([
+      { command: "start", description: "Начать работу с ботом" },
+      { command: "help", description: "Показать справку" },
+      { command: "voice", description: "Изменить голос озвучки" },
+      { command: "stats", description: "Показать расходы на OpenAI" },
+    ]);
+
     // Don't await - launch() resolves only when bot stops
     bot.launch().catch((err) => {
       console.error("Bot polling error:", err);
