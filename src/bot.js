@@ -9,6 +9,7 @@ import {
   transcribeTelegramAudio,
   createSummaryWithEmoji,
 } from "./transcription.js";
+import { recognizeTextFromTelegramImage } from "./imageOcr.js";
 import fs from "fs";
 
 // Create bot instance
@@ -18,6 +19,7 @@ const bot = new Telegraf(config.telegramBotToken);
 const messageQueues = new Map(); // Store queue per user
 const processingUsers = new Set(); // Track users currently being processed
 const audioBatchStates = new Map(); // Store pending audio messages per user
+const imageBatchStates = new Map(); // Store pending image messages per user
 
 async function upsertStatusMessage(state, text) {
   if (!state.statusMessage) {
@@ -137,6 +139,133 @@ function enqueueAudioMessage(ctx, fileId) {
   }, config.audioBatchWindowMs);
 }
 
+async function processImageBatch(userId) {
+  const state = imageBatchStates.get(userId);
+  if (!state || state.processing) return;
+
+  const batch = state.items.splice(0, state.items.length);
+  if (batch.length === 0) return;
+
+  state.processing = true;
+
+  try {
+    await upsertStatusMessage(
+      state,
+      `🖼️ Начал обработку изображений (${batch.length} шт.)`
+    );
+
+    for (let i = 0; i < batch.length; i++) {
+      const item = batch[i];
+
+      await upsertStatusMessage(
+        state,
+        `🔍 Распознаю текст ${i + 1}/${batch.length}...`
+      );
+
+      let recognizedText;
+      try {
+        recognizedText = await recognizeTextFromTelegramImage(
+          item.ctx,
+          item.fileId
+        );
+      } catch (error) {
+        console.error("Error recognizing image text:", error);
+        await item.ctx.reply(
+          `⚠️ Не удалось распознать текст на изображении ${i + 1}: ${error.message}`,
+          { reply_to_message_id: item.messageId }
+        );
+        continue;
+      }
+
+      if (!recognizedText || recognizedText.trim() === "") {
+        await item.ctx.reply(
+          `⚠️ Текст на изображении ${i + 1} не найден.`,
+          { reply_to_message_id: item.messageId }
+        );
+        continue;
+      }
+
+      await upsertStatusMessage(
+        state,
+        `🎙️ Озвучиваю ${i + 1}/${batch.length}...`
+      );
+
+      const chunks = splitTextIntoChunks(recognizedText, config.maxTextLength);
+
+      for (const chunk of chunks) {
+        const audioFilePath = await textToSpeech(chunk);
+        try {
+          await item.ctx.replyWithVoice(
+            { source: fs.createReadStream(audioFilePath) },
+            { reply_to_message_id: item.messageId }
+          );
+        } finally {
+          if (fs.existsSync(audioFilePath)) {
+            fs.unlinkSync(audioFilePath);
+          }
+        }
+      }
+    }
+
+    await upsertStatusMessage(state, "✅ Готово!");
+    cleanupTempFiles();
+  } catch (error) {
+    console.error("Error processing image batch:", error);
+    await state.chatCtx.reply(
+      `Ошибка при обработке изображений: ${error.message}`
+    );
+  } finally {
+    state.processing = false;
+
+    if (state.items.length > 0) {
+      state.timer = setTimeout(() => {
+        processImageBatch(userId);
+      }, config.imageBatchWindowMs);
+    } else {
+      if (state.timer) {
+        clearTimeout(state.timer);
+      }
+      imageBatchStates.delete(userId);
+    }
+  }
+}
+
+function enqueueImageMessage(ctx, fileId, messageId) {
+  const userId = ctx.from.id;
+  let state = imageBatchStates.get(userId);
+
+  if (!state) {
+    state = {
+      chatCtx: ctx,
+      chatId: ctx.chat.id,
+      items: [],
+      timer: null,
+      processing: false,
+      statusMessage: null,
+    };
+    imageBatchStates.set(userId, state);
+  }
+
+  state.chatCtx = ctx;
+  state.chatId = ctx.chat.id;
+  state.items.push({ ctx, fileId, messageId });
+
+  if (state.timer) {
+    clearTimeout(state.timer);
+  }
+
+  upsertStatusMessage(
+    state,
+    `⏳ Получил изображение (${state.items.length}). Жду еще...`
+  ).catch((error) => {
+    console.error("Error updating status message:", error);
+  });
+
+  state.timer = setTimeout(() => {
+    processImageBatch(userId);
+  }, config.imageBatchWindowMs);
+}
+
 // Process messages from queue sequentially
 async function processMessageQueue(userId) {
   if (processingUsers.has(userId)) return;
@@ -253,7 +382,7 @@ bot.help((ctx) => {
       "Доступные команды:\n" +
       "/start - Начать работу с ботом\n" +
       "/help - Показать эту справку\n" +
-      "/voice [название голоса] - Изменить голос (доступны: alloy, echo, fable, onyx, nova, shimmer)\n\n" +
+      "/voice [название голоса] - Изменить голос (доступны: alloy, ash, ballad, coral, echo, fable, marin, nova, onyx, sage, shimmer, verse, cedar)\n\n" +
       "Также поддерживаются голосовые и аудиофайлы: бот сделает транскрипт и краткую выжимку."
   );
 });
@@ -264,18 +393,32 @@ bot.command("voice", async (ctx) => {
   if (args.length < 2) {
     return ctx.reply(
       "Пожалуйста, укажите название голоса.\n" +
-        "Доступные голоса: alloy, echo, fable, onyx, nova, shimmer\n" +
-        "Пример: /voice nova"
+        "Доступные голоса: alloy, ash, ballad, coral, echo, fable, marin, nova, onyx, sage, shimmer, verse, cedar\n" +
+        "Пример: /voice cedar"
     );
   }
 
   const voice = args[1].toLowerCase();
-  const availableVoices = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"];
+  const availableVoices = [
+    "alloy",
+    "ash",
+    "ballad",
+    "coral",
+    "echo",
+    "fable",
+    "marin",
+    "nova",
+    "onyx",
+    "sage",
+    "shimmer",
+    "verse",
+    "cedar",
+  ];
 
   if (!availableVoices.includes(voice)) {
     return ctx.reply(
       `Неизвестный голос: ${voice}.\n` +
-        "Доступные голоса: alloy, echo, fable, onyx, nova, shimmer"
+        `Доступные голоса: ${availableVoices.join(", ")}`
     );
   }
 
@@ -374,6 +517,16 @@ bot.on("voice", async (ctx) => {
 // Handle Telegram audio messages
 bot.on("audio", async (ctx) => {
   enqueueAudioMessage(ctx, ctx.message.audio.file_id);
+});
+
+// Handle Telegram photo messages
+bot.on("photo", async (ctx) => {
+  const photos = ctx.message.photo;
+  if (!photos || photos.length === 0) return;
+
+  // Telegram sends multiple sizes — pick the largest
+  const largest = photos[photos.length - 1];
+  enqueueImageMessage(ctx, largest.file_id, ctx.message.message_id);
 });
 
 // Handle text messages

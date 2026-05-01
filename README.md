@@ -5,7 +5,7 @@
 ## Возможности
 
 - Преобразование текста в речь с помощью OpenAI TTS API
-- Поддержка различных голосов (alloy, echo, fable, onyx, nova, shimmer)
+- Поддержка различных голосов (alloy, ash, ballad, coral, echo, fable, marin, nova, onyx, sage, shimmer, verse, cedar)
 - Разделение длинных текстов на части и отправка нескольких аудио сообщений
 - Ограничение доступа к боту по списку разрешенных пользователей
 - Контейнеризация с помощью Docker
@@ -91,8 +91,11 @@ bun dev
 - `TELEGRAM_BOT_TOKEN` - токен Telegram бота
 - `OPENAI_API_KEY` - ключ API OpenAI
 - `ALLOWED_USERS` - список разрешенных пользователей (ID или @username через запятую)
-- `TTS_MODEL` - модель TTS (по умолчанию: tts-1)
-- `TTS_VOICE` - голос по умолчанию (по умолчанию: alloy)
+- `TTS_MODEL` - модель TTS (по умолчанию: gpt-4o-mini-tts)
+- `TTS_VOICE` - голос по умолчанию (по умолчанию: cedar)
+- `STT_MODEL` - модель распознавания речи (по умолчанию: gpt-4o-mini-transcribe)
+- `SUMMARY_MODEL` - модель для выжимки аудио/документов (по умолчанию: gpt-5.4-mini)
+- `VISION_MODEL` - модель для OCR изображений (по умолчанию: gpt-5.4-mini)
 - `MAX_TEXT_LENGTH` - максимальная длина текста для одного запроса TTS (по умолчанию: 4096)
 
 ## Лицензия

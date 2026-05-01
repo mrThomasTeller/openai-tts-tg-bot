@@ -16,6 +16,18 @@ const openai = new OpenAI({
   apiKey: config.openaiApiKey,
 });
 
+export function normalizeTranscriptionText(transcript) {
+  if (typeof transcript === "string") {
+    return transcript.trim();
+  }
+
+  if (typeof transcript?.text === "string") {
+    return transcript.text.trim();
+  }
+
+  return "";
+}
+
 function downloadFile(url, outputPath) {
   return new Promise((resolve, reject) => {
     const file = fs.createWriteStream(outputPath);
@@ -59,7 +71,7 @@ export async function transcribeTelegramAudio(ctx, fileId) {
       response_format: "text",
     });
 
-    return typeof transcript === "string" ? transcript.trim() : "";
+    return normalizeTranscriptionText(transcript);
   } catch (error) {
     throw new Error(`Не удалось распознать аудио: ${error.message}`);
   } finally {

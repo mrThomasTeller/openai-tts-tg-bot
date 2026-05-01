@@ -75,15 +75,16 @@ export function splitTextIntoChunks(text, maxLength = config.maxTextLength) {
 export async function textToSpeech(text) {
   try {
     const timestamp = Date.now();
-    const outputPath = path.join(tempDir, `speech_${timestamp}.mp3`);
+    const outputPath = path.join(tempDir, `speech_${timestamp}.ogg`);
 
-    const mp3 = await openai.audio.speech.create({
+    const response = await openai.audio.speech.create({
       model: config.ttsModel,
       voice: config.ttsVoice,
       input: text,
+      response_format: "opus",
     });
 
-    const buffer = Buffer.from(await mp3.arrayBuffer());
+    const buffer = Buffer.from(await response.arrayBuffer());
     fs.writeFileSync(outputPath, buffer);
 
     return outputPath;
