@@ -4,6 +4,7 @@ import path from "path";
 import https from "https";
 import { fileURLToPath } from "url";
 import config from "./config.js";
+import { recordChatUsage } from "./usage.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const tempDir = path.resolve(__dirname, "../temp");
@@ -92,6 +93,8 @@ export async function recognizeTextFromTelegramImage(ctx, fileId) {
         },
       ],
     });
+
+    recordChatUsage(config.visionModel, completion.usage);
 
     const text = completion.choices?.[0]?.message?.content?.trim() || "";
     return text;

@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import config from "./config.js";
+import { recordTtsUsage } from "./usage.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const tempDir = path.resolve(__dirname, "../temp");
@@ -86,6 +87,8 @@ export async function textToSpeech(text) {
 
     const buffer = Buffer.from(await response.arrayBuffer());
     fs.writeFileSync(outputPath, buffer);
+
+    recordTtsUsage(config.ttsModel, text, response.usage);
 
     return outputPath;
   } catch (error) {

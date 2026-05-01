@@ -4,6 +4,7 @@ import path from "path";
 import https from "https";
 import { fileURLToPath } from "url";
 import config from "./config.js";
+import { recordChatUsage, recordSttUsage } from "./usage.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const tempDir = path.resolve(__dirname, "../temp");
@@ -26,6 +27,17 @@ export function normalizeTranscriptionText(transcript) {
   }
 
   return "";
+}
+
+function getAudioDurationSeconds(filePath) {
+  // Грубая оценка: 16 КБ/с (~128 кбит/с) для голосовых ogg/opus.
+  // Используется как фолбэк, если verbose_json не вернул duration.
+  try {
+    const size = fs.statSync(filePath).size;
+    return size / 16000;
+  } catch {
+    return 0;
+  }
 }
 
 function downloadFile(url, outputPath) {
@@ -68,8 +80,14 @@ export async function transcribeTelegramAudio(ctx, fileId) {
     const transcript = await openai.audio.transcriptions.create({
       file: fs.createReadStream(tempFilePath),
       model: config.sttModel,
-      response_format: "text",
+      response_format: "verbose_json",
     });
+
+    const duration =
+      typeof transcript?.duration === "number"
+        ? transcript.duration
+        : getAudioDurationSeconds(tempFilePath);
+    recordSttUsage(config.sttModel, duration);
 
     return normalizeTranscriptionText(transcript);
   } catch (error) {
@@ -105,6 +123,8 @@ export async function createSummaryWithEmoji(text) {
         },
       ],
     });
+
+    recordChatUsage(config.summaryModel, completion.usage);
 
     return completion.choices?.[0]?.message?.content?.trim() || "";
   } catch (error) {

@@ -10,6 +10,7 @@ import {
   createSummaryWithEmoji,
 } from "./transcription.js";
 import { recognizeTextFromTelegramImage } from "./imageOcr.js";
+import { getStatsReport } from "./usage.js";
 import fs from "fs";
 
 // Create bot instance
@@ -382,7 +383,8 @@ bot.help((ctx) => {
       "Доступные команды:\n" +
       "/start - Начать работу с ботом\n" +
       "/help - Показать эту справку\n" +
-      "/voice [название голоса] - Изменить голос (доступны: alloy, ash, ballad, coral, echo, fable, marin, nova, onyx, sage, shimmer, verse, cedar)\n\n" +
+      "/voice [название голоса] - Изменить голос (доступны: alloy, ash, ballad, coral, echo, fable, marin, nova, onyx, sage, shimmer, verse, cedar)\n" +
+      "/stats - Показать расходы на OpenAI\n\n" +
       "Также поддерживаются голосовые и аудиофайлы: бот сделает транскрипт и краткую выжимку."
   );
 });
@@ -427,6 +429,16 @@ bot.command("voice", async (ctx) => {
   ctx.session.voice = voice;
 
   return ctx.reply(`Голос изменен на ${voice}.`);
+});
+
+// Handle stats command
+bot.command("stats", async (ctx) => {
+  try {
+    await ctx.reply(getStatsReport());
+  } catch (error) {
+    console.error("Error getting stats:", error);
+    await ctx.reply(`Не удалось получить статистику: ${error.message}`);
+  }
 });
 
 // Handle document messages

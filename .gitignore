@@ -8,6 +8,9 @@ node_modules/
 temp/
 *.mp3
 
+# Usage stats
+data/
+
 # Logs
 logs
 *.log
