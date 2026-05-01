@@ -11,8 +11,8 @@ RUN npm install --production
 # Copy the source code
 COPY src/ ./src/
 
-# Create temp directory for audio files
-RUN mkdir -p temp
+# Create temp directory for audio files and data directory for usage stats
+RUN mkdir -p temp data
 
 # Set environment variables
 ENV NODE_ENV=production
