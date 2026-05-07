@@ -7,7 +7,7 @@
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
     "stop-and-dev": "set -a && . ./.env && set +a && ssh ${DEV_PROD_USER}@${DEV_PROD_HOST} \"cd ${DEV_PROD_PATH} && make stop\" && bun run dev",
-    "prod-deploy": "sh -c 'set -a && . ./.env && set +a && git add -A && { if [ -n \"$1\" ]; then git commit -m \"$1\"; else git commit; fi; } && git push && ssh \"$DEV_PROD_USER@$DEV_PROD_HOST\" \"cd $DEV_PROD_PATH && git pull && make\"' --",
+    "prod-deploy": "sh -c 'set -a && . ./.env && set +a && git add -A && { if [ -n \"$1\" ]; then git commit -m \"$1\"; else git commit; fi; } || true && git push && ssh \"$DEV_PROD_USER@$DEV_PROD_HOST\" \"cd $DEV_PROD_PATH && git pull && make\"' --",
     "test": "node --test"
   },
   "dependencies": {
