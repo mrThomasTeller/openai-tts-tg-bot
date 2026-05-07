@@ -71,7 +71,8 @@ export async function transcribeTelegramAudio(ctx, fileId) {
 
   try {
     const file = await ctx.telegram.getFile(fileId);
-    const ext = path.extname(file.file_path || "") || ".ogg";
+    let ext = path.extname(file.file_path || "") || ".ogg";
+    if (ext === ".oga") ext = ".ogg";
     tempFilePath = path.join(tempDir, `audio_${Date.now()}_${fileId}${ext}`);
     const fileUrl = `https://api.telegram.org/file/bot${ctx.telegram.token}/${file.file_path}`;
 
@@ -80,13 +81,10 @@ export async function transcribeTelegramAudio(ctx, fileId) {
     const transcript = await openai.audio.transcriptions.create({
       file: fs.createReadStream(tempFilePath),
       model: config.sttModel,
-      response_format: "verbose_json",
+      response_format: "json",
     });
 
-    const duration =
-      typeof transcript?.duration === "number"
-        ? transcript.duration
-        : getAudioDurationSeconds(tempFilePath);
+    const duration = getAudioDurationSeconds(tempFilePath);
     recordSttUsage(config.sttModel, duration);
 
     return normalizeTranscriptionText(transcript);

@@ -12,6 +12,8 @@ import {
 import { recognizeTextFromTelegramImage } from "./imageOcr.js";
 import { getStatsReport } from "./usage.js";
 import fs from "fs";
+import os from "os";
+import path from "path";
 
 // Create bot instance
 const bot = new Telegraf(config.telegramBotToken);
@@ -73,9 +75,32 @@ async function processAudioBatch(userId) {
 
     const mergedTranscript = transcriptParts.join("\n\n").trim();
     if (!mergedTranscript) {
-      await upsertStatusMessage(state, "⚠️ Не удалось распознать текст в аудио.");
+      await upsertStatusMessage(
+        state,
+        "⚠️ Не удалось распознать текст в аудио."
+      );
       return;
     }
+
+    const txtPath = path.join(os.tmpdir(), `transcript_${Date.now()}.txt`);
+    fs.writeFileSync(txtPath, mergedTranscript, "utf-8");
+    console.log(`[doc] sending, size: ${fs.statSync(txtPath).size}`);
+    try {
+      await state.chatCtx.replyWithDocument({
+        source: fs.createReadStream(txtPath),
+        filename: path.basename(txtPath),
+      });
+      console.log("[doc] sent ok");
+    } catch (docError) {
+      console.error("[doc] failed:", docError.message);
+    } finally {
+      fs.unlinkSync(txtPath);
+    }
+    console.log("[text] sending text");
+    for (let i = 0; i < mergedTranscript.length; i += 4096) {
+      await state.chatCtx.reply(mergedTranscript.slice(i, i + 4096));
+    }
+    console.log("[text] sent ok");
 
     await upsertStatusMessage(state, "✨ Формирую краткую выжимку...");
     const summary = await createSummaryWithEmoji(mergedTranscript);
@@ -172,17 +197,18 @@ async function processImageBatch(userId) {
       } catch (error) {
         console.error("Error recognizing image text:", error);
         await item.ctx.reply(
-          `⚠️ Не удалось распознать текст на изображении ${i + 1}: ${error.message}`,
+          `⚠️ Не удалось распознать текст на изображении ${i + 1}: ${
+            error.message
+          }`,
           { reply_to_message_id: item.messageId }
         );
         continue;
       }
 
       if (!recognizedText || recognizedText.trim() === "") {
-        await item.ctx.reply(
-          `⚠️ Текст на изображении ${i + 1} не найден.`,
-          { reply_to_message_id: item.messageId }
-        );
+        await item.ctx.reply(`⚠️ Текст на изображении ${i + 1} не найден.`, {
+          reply_to_message_id: item.messageId,
+        });
         continue;
       }
 
@@ -385,7 +411,7 @@ bot.help((ctx) => {
       "/help - Показать эту справку\n" +
       "/voice [название голоса] - Изменить голос (доступны: alloy, ash, ballad, coral, echo, fable, marin, nova, onyx, sage, shimmer, verse, cedar)\n" +
       "/stats - Показать расходы на OpenAI\n\n" +
-      "Также поддерживаются голосовые и аудиофайлы: бот сделает транскрипт и краткую выжимку."
+      "Также поддерживаются голосовые и аудиофайлы: бот сделает х и краткую выжимку."
   );
 });
 
